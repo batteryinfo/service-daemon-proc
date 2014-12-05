@@ -1,0 +1,10 @@
+[Unit]
+Description=SAMPLE socket
+
+[Socket]
+ListenStream=/tmp/sample
+SocketMode=0777
+PassCredentials=yes
+SmackLabelIPIn=*
+SmackLabelIPOut=@
+Accept=false

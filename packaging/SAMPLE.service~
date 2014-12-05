@@ -1,0 +1,10 @@
+[Unit]
+Description=Start the SAMPLE framework
+
+[Service]
+ExecStart=/usr/bin/SAMPLE
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=graphical.target
