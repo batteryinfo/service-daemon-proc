@@ -17,120 +17,29 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 #include "ss_log.h"
+#include "custom.h"
 
 #define LOG_TAG		"SAMPLE" //DLOG Name
 #define DLOG_ERR		DLOG_ERROR
 #define PRT_ERR(fmt, arg...) \
 	do { SLOG(LOG_ERR, LOG_TAG, fmt, ##arg); } while (0)
 
-#define SAMPLE_SOCKET_PATH "/tmp/sample"
-#define MAX_APP_LIST 100
+#define LCD_START 1
+#define LCD_END 2
 
-#define FILE_PATH "/home/developer/battery_info"
-
-
-static Ecore_Fd_Handler *custom_efd = NULL;
-static int __custom_start(void);
-//void quick_sort(struct app_data *data, int start, int end);
-
-
-//IPC Structure
-struct message_data{
-	char name[50];
-	int pid;
-	int state;
-};
-
-struct app_data{
-	char name[50];
-	int pid;
-	int state;
-	unsigned int total_time;
-	unsigned int prev_time;
-	unsigned int lcd_time;
-	
-	struct timeval app_fore_start;
-	struct timeval app_fore_end;	
-};
-
-struct app_list{
-	struct app_data data[MAX_APP_LIST];
-	int num_of_list;
-	unsigned int cpu_total_time;
-	unsigned int cpu_work_time;
-	unsigned int cpu_idle_time;
-};
-
-struct statStuff { 
-    int pid;			// %d 
-    char comm[256];		// %s
-    char state;			// %c
-    int ppid;			// %d
-    int pgrp;			// %d
-    int session;		// %d
-    int tty_nr;			// %d
-    int tpgid;			// %d
-    unsigned long flags;	// %lu
-    unsigned long minflt;	// %lu
-    unsigned long cminflt;	// %lu
-    unsigned long majflt;	// %lu
-    unsigned long cmajflt;	// %lu
-    unsigned long utime;	// %lu
-    unsigned long stime; 	// %lu
-    long cutime;		// %ld
-    long cstime;		// %ld
-    long priority;		// %ld
-    long nice;			// %ld
-    long num_threads;		// %ld
-    long itrealvalue;		// %ld
-    unsigned long starttime;	// %lu
-    unsigned long vsize;	// %lu
-    long rss;			// %ld
-    unsigned long rlim;		// %lu
-    unsigned long startcode;	// %lu
-    unsigned long endcode;	// %lu
-    unsigned long startstack;	// %lu
-    unsigned long kstkesp;	// %lu
-    unsigned long kstkeip;	// %lu
-    unsigned long signal;	// %lu
-    unsigned long blocked;	// %lu
-    unsigned long sigignore;	// %lu
-    unsigned long sigcatch;	// %lu
-    unsigned long wchan;	// %lu
-    unsigned long nswap;	// %lu
-    unsigned long cnswap;	// %lu
-    int exit_signal;		// %d
-    int processor;		// %d
-    unsigned long rt_priority;	// %lu 
-    unsigned long policy;	// %lu 
-    unsigned long long delayacct_blkio_ticks;	// %llu 
-} ; 
-
-
-#define CREATE 1
-#define RESET 5
-#define RESUME 3
-#define PAUSE 3
-#define TERMINATE 2
+#define CREATE 		1
+#define TERMINATE 	2
+#define PAUSE 		3
+#define RESUME 		4
+#define RESET 		5
 static const char *_ae_name[8] = {
 	"UNKNOWN","CREATE", "TERMINATE","PAUSE","RESUME","RESET","LOWMEM_POST","MEM_FLUSH"
 };
 
+static Ecore_Fd_Handler *custom_efd = NULL;
+static int __custom_start(void);
 
 struct app_list * al;
-
-//static int cmp_pid(const void* p1, const void* p2){
-//	if( (struct app
-
-
-static int read_message(int fd, struct message_data *msg)
-{
-	//int i;
-
-	read(fd, msg, sizeof(struct message_data));
-	
-	return 0;
-}
 
 unsigned int get_total_cpu_time(void){
 	FILE *fp;
@@ -159,7 +68,6 @@ unsigned int get_total_cpu_time(void){
 }
 
 
-
 unsigned int get_app_cpu_time(int pid){
 	FILE *fp;
 	char buf[256]; 
@@ -174,7 +82,6 @@ unsigned int get_app_cpu_time(int pid){
         	PRT_ERR("Fail to read pid:%d stat file \n", pid);
         	return 0;
     	}
-
 	
         fscanf(fp, format, 
 	    &s->pid,
@@ -221,17 +128,12 @@ unsigned int get_app_cpu_time(int pid){
 	    &s->delayacct_blkio_ticks
 	);
 
-	//PRT_ERR("Test output : path : %s, PID:%d, %s, user : %u, system : %u\n", buf, s->pid, s->comm, s->utime, s->stime);
 	time = (s->utime) + (s->stime) + (s->cutime) + (s->cstime) ;
 	close(fp);
 	free(s);
 
 	return time;
-
 }
-
-#define LCD_START 1
-#define LCD_END 2
 
 int update_lcd_time(char* name, int working){
 	int i;
@@ -258,7 +160,6 @@ int update_lcd_time(char* name, int working){
 	}
 
 	else{
-
 		if(al->data[num].app_fore_start.tv_sec == 0){
 			PRT_ERR("[gandan] No time data\n");
 			return -1;
@@ -285,38 +186,23 @@ int update_lcd_time(char* name, int working){
 		al->data[num].app_fore_start.tv_sec = 0;
 		al->data[num].app_fore_end.tv_sec = 0;
 
-		//free(al->data[num].app_fore_start);	
-		//free(al->data[num].app_fore_end);
 	}
 
 	return 0;
 }
 
 int write_data(void){
-//#define FILE_PATH "/tmp/bat"
-	//FILE *fp;	
+
 	int * fd;
 	int i;
-	char buf[256]; 
-	
+	char buf[256]; 	
 	unsigned int total_cpu_time = 1;
 	unsigned int total_lcd_time = 1;
-
 	char* name;
 	int percent;
 	char* path; 	
 
-	//fp = fopen(FILE_PATH, "w");
-	fd = open(FILE_PATH, O_WRONLY | O_CREAT, 0644);
-	/*
-	if (fp == NULL)
-	{
-        	PRT_ERR("Fail to create file : %s \n",FILE_PATH);
-        	return 0;
-    	}*/
-	
-	//write(fd, "test----", strlen("test----") );
-
+	fd = open(FILE_PATH, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
 	for(i=0; i<al->num_of_list; i++){
 		total_cpu_time += al->data[i].total_time;
@@ -326,26 +212,20 @@ int write_data(void){
 
 	for(i=0; i<al->num_of_list; i++){
 		percent = (((al->data[i].total_time * 100) / total_cpu_time) + ((al->data[i].lcd_time * 100) / total_lcd_time) ) / 2;
-		//fprintf(fp, "%d %s %u\n", al->data[i].pid, al->data[i].name, percent);
-		
+				
 		sprintf(buf,"%d %s %u \n", al->data[i].pid, al->data[i].name, percent);
 		write(fd, buf, strlen(buf));
 
 		PRT_ERR("%d %s %u\n", al->data[i].pid, al->data[i].name, percent);
 	}
-	PRT_ERR("write num of %d data\n", al->num_of_list);
+	//PRT_ERR("write num of %d data\n", al->num_of_list);
 
-	close(fd);
-	
-	
-
+	close(fd);	
 }
 
 int update_app_list(struct message_data* msg){
 	int i;
 	bool found = false;
-
-
 
 	if(msg->state == PAUSE || msg->state == RESET)
 		return 0;
@@ -393,33 +273,25 @@ int update_app_list(struct message_data* msg){
 	
 		}
 	}
-	
 
-	//Second, Sort
-	//quick_sort(al, 0, al->num_of_list);
-
-	//Third, Update CPU Time
-
-
+/*
 	//print app list
 	PRT_ERR("\n\n---------------APP List-----------------\n");
 	for(i=0; i<al->num_of_list; i++){
 		PRT_ERR("[APP %d][Application:%s], state : %s, CPU TIME : %u / LCD_TIME(msec) : %u",al->data[i].pid, al->data[i].name, _ae_name[al->data[i].state], al->data[i].total_time, al->data[i].lcd_time );
 	}
 	PRT_ERR("Total Time : %u \n\n", get_total_cpu_time());
+*/
 
+	//Second write data
 	write_data();
-	PRT_ERR("Write data to file %s \n", FILE_PATH);
-
+	//PRT_ERR("Write data to file %s \n", FILE_PATH);
 }
 
 static int custom_cb(void *data, Ecore_Fd_Handler * fd_handler)
 {
 	int fd;
 	struct message_data *msg; //-------
-
-	//PRT_ERR("[gandan] %s: socket data received\n", __FUNCTION__);
-
 	struct sockaddr_un client_address;
 	int client_sockfd;
 	int client_len;
@@ -448,13 +320,12 @@ static int custom_cb(void *data, Ecore_Fd_Handler * fd_handler)
 		return -1;
 	}
 
-	read_message(client_sockfd, msg);
+	read(client_sockfd, msg, sizeof(struct message_data));
 	PRT_ERR("[APP %d][Application:%s], state : %s",msg->pid, msg->name, _ae_name[msg->state]);
 	//
 	//-------------------------------------------------------------------//
 
 	update_app_list(msg);
-
 
 	free(msg);
 
@@ -532,40 +403,3 @@ static int __custom_start(void){
 }
 
 
-//-----------------------------------------------------------------------------------------------------
-/*
-void swap(struct app_data* a, struct app_data* b){
-    struct app_data tmp;
-	
-	memcpy(&tmp, a, sizeof(struct app_data) );
-	memcpy(a, b,  	sizeof(struct app_data) );
-	memcpy(b, &tmp, 	sizeof(struct app_data) );
-}
- 
-void quick_sort(struct app_data *data, int start, int end){
- 
-    if(start>=end) return;
- 
-    int mid=(start+end)/2;
-    int pivot=data[mid].pid;
- 
-    swap(&data[start],&data[mid]);
- 
-    int p=start+1,q=end;
- 
-    while(1){
-        while(data[p].pid<=pivot){ p++; }
-        while(data[q].pid>pivot){ q--; }
- 
-        if(p>q) break;
- 
-        swap(&data[p],&data[q]);
-    }
- 
-    swap(&data[start],&data[q]);
- 
-    quick_sort(data,start,q-1);
-    quick_sort(data,q+1,end);
- 
-}
-*/
